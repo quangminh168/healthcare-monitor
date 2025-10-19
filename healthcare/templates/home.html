@@ -1,0 +1,132 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2 class="mb-4">Danh sách bệnh nhân</h2>
+
+{% for post in posts %}
+<div class="card mb-4 p-3 shadow-sm">
+  <h2>
+  <a class="article-title" href="{{ url_for('post', post_id=post.id) }}">
+    {{ post.patient_name }} ({{ post.age }} tuổi, {{ post.gender }})
+  </a>
+  </h2>
+  <p><strong>Tình trạng:</strong> {{ post.condition }}</p>
+  <p><strong>Ghi chú:</strong> {{ post.notes }}</p>
+  <small class="text-muted">
+    Cập nhật: {{ post.date_posted.strftime('%Y-%m-%d %H:%M:%S') }}
+  </small>
+
+
+  <div class="mt-3">
+    <button class="btn btn-outline-success connect-btn"
+            data-patient="{{ post.id }}"
+            data-device="{{ post.device_id }}">
+       Xem nhịp tim realtime
+    </button>
+  </div>
+
+  <div id="chartContainer-{{ post.id }}" class="chart-container mt-3" style="display:none; height:300px;">
+    <canvas id="chart-{{ post.id }}"></canvas>
+  </div>
+</div>
+{% endfor %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const charts = {};               // lưu nhiều chart theo bệnh nhân
+const intervals = {};            // mỗi bệnh nhân 1 interval
+const MAX_POINTS = 60;           // giới hạn số điểm để tránh lag
+const FETCH_INTERVAL = 2000;     // thời gian giữa các lần cập nhật
+
+function initChart(postId) {
+  const ctx = document.getElementById(`chart-${postId}`).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'Nhịp tim (BPM)', data: [], borderColor: 'red', tension: 0.25 },
+        { label: 'SpO₂ (%)', data: [], borderColor: 'blue', tension: 0.25 }
+      ]
+    },
+    options: {
+      responsive: true,
+      animation: { duration: 200 },
+      maintainAspectRatio: false,
+      scales: {
+        x: { ticks: { autoSkip: true, maxRotation: 0 } },
+        y: { beginAtZero: false }
+      }
+    }
+  });
+}
+
+async function fetchData(postId, deviceId) {
+  try {
+    const res = await fetch(`/heartbeat/latest/${encodeURIComponent(deviceId)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    if (!data || !data.timestamp_ms || data.bpm === 0) return; // bỏ qua mẫu lỗi
+
+    const chart = charts[postId];
+    const label = new Date(data.timestamp_ms).toLocaleTimeString();
+
+    // Bỏ qua mẫu trùng timestamp
+    if (chart.lastTimestamp === data.timestamp_ms) return;
+    chart.lastTimestamp = data.timestamp_ms;
+
+    chart.data.labels.push(label);
+    chart.data.datasets[0].data.push(data.bpm);
+    chart.data.datasets[1].data.push(data.spo2);
+
+    // Giới hạn số điểm hiển thị
+    while (chart.data.labels.length > MAX_POINTS) {
+      chart.data.labels.shift();
+      chart.data.datasets.forEach(ds => ds.data.shift());
+    }
+
+    chart.update('none'); // không animation để mượt hơn
+  } catch (err) {
+    console.warn(` Thiết bị ${deviceId} mất kết nối hoặc không có dữ liệu.`);
+  }
+}
+
+// --- Xử lý sự kiện nhấn nút kết nối ---
+document.querySelectorAll(".connect-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const postId = btn.getAttribute("data-patient");
+    const deviceId = btn.getAttribute("data-device");
+    const chartContainer = document.getElementById(`chartContainer-${postId}`);
+
+    if (!deviceId) {
+      alert(" Bệnh nhân này chưa có Device ID để kết nối!");
+      return;
+    }
+
+    // Nếu chart chưa khởi tạo thì tạo mới
+    if (!charts[postId]) {
+      charts[postId] = initChart(postId);
+      charts[postId].lastTimestamp = 0;
+    }
+
+    // Nếu đang chạy thì dừng lại (ẩn chart)
+    if (intervals[postId]) {
+      clearInterval(intervals[postId]);
+      intervals[postId] = null;
+      chartContainer.style.display = "none";
+      btn.textContent = " Xem nhịp tim realtime";
+      console.log(` Dừng nhận dữ liệu cho ${deviceId}`);
+    }
+    // Nếu đang tắt thì bật lên (hiện chart)
+    else {
+      chartContainer.style.display = "block";
+      fetchData(postId, deviceId); // gọi 1 lần ngay lập tức
+      intervals[postId] = setInterval(() => fetchData(postId, deviceId), FETCH_INTERVAL);
+      btn.textContent = " Ngắt kết nối";
+      console.log(` Bắt đầu nhận dữ liệu từ ${deviceId}`);
+    }
+  });
+});
+</script>
+
+{% endblock content %}

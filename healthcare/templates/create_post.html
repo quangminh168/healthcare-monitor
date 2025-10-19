@@ -1,0 +1,156 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class='content-section'>
+    <form method="POST" action="">
+        {{ form.hidden_tag() }}
+        <fieldset class="form-group">
+            <legend class="border-bottom mb-4">Thêm thông tin bệnh nhân</legend>
+
+            <div class="form-group">
+                {{ form.patient_name.label(class="form-control-label") }}
+                {{ form.patient_name(class="form-control form-control-lg") }}
+            </div>
+
+            <div class="form-group">
+                {{ form.age.label(class="form-control-label") }}
+                {{ form.age(class="form-control form-control-lg") }}
+            </div>
+
+            <div class="form-group">
+                {{ form.gender.label(class="form-control-label") }}
+                {{ form.gender(class="form-control form-control-lg") }}
+            </div>
+
+            <div class="form-group">
+                {{ form.condition.label(class="form-control-label") }}
+                {{ form.condition(class="form-control form-control-lg") }}
+            </div>
+
+            <div class="form-group">
+                {{ form.notes.label(class="form-control-label") }}
+                {{ form.notes(class="form-control form-control-lg") }}
+            </div>
+
+            <!--  Thêm ô nhập Device ID -->
+            <div class="form-group">
+                <label for="device_id" class="form-control-label">Mã thiết bị (Device ID)</label>
+                <input type="text" name="device_id" id="device_id" class="form-control form-control-lg" placeholder="Nhập mã thiết bị ESP8266 (nếu có)">
+            </div>
+        </fieldset>
+
+        <!--  Nút kết nối -->
+        <button type="button" class="btn btn-outline-success" id="connectBtn">🔗 Kết nối thiết bị</button>
+
+        <!--  Biểu đồ -->
+        <div id="chartContainer" style="height: 350px; margin-top:20px;">
+            <canvas id="chart"></canvas>
+        </div>
+
+        <div class="form-group mt-3">
+            {{ form.submit(class="btn btn-outline-info") }}
+        </div>
+    </form>
+</div>
+
+<!--  Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+let chart = null;
+let updateInterval = null;
+let lastTimestampMs = 0;    // lưu epoch ms của mẫu mới nhất đã xử lý
+const MAX_POINTS = 60;      // độ dài tối đa của đồ thị (tùy chỉnh)
+
+function initChart() {
+  const ctx = document.getElementById('chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'Nhịp tim (BPM)', data: [], borderColor: 'red', tension: 0.25 },
+        { label: 'SpO₂ (%)',      data: [], borderColor: 'blue', tension: 0.25 }
+      ]
+    },
+    options: {
+      responsive: true,
+      animation: { duration: 200 },          // ngắn hơn để mượt
+      maintainAspectRatio: false,
+      scales: {
+        x: { ticks: { maxRotation: 0, autoSkip: true } },
+        y: { beginAtZero: false }
+      }
+    }
+  });
+}
+
+// Hàm lấy dữ liệu 1 lần và xử lý (gọi bởi interval)
+async function fetchOnce(deviceId) {
+  try {
+    const res = await fetch(`/heartbeat/latest/${encodeURIComponent(deviceId)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    // nếu không có dữ liệu hợp lệ
+    if (!data || !data.timestamp_ms || data.bpm === 0) {
+      console.warn(' Không có dữ liệu mới hoặc thiết bị chưa gửi.');
+      return;
+    }
+
+    // nếu là bản ghi trùng (chưa có dữ liệu mới) -> bỏ
+    if (data.timestamp_ms === lastTimestampMs) {
+      // không update lại chart
+      return;
+    }
+
+    // cập nhật lastTimestamp
+    lastTimestampMs = data.timestamp_ms;
+
+    // convert thời gian hiển thị theo client (local)
+    const label = new Date(data.timestamp_ms);
+
+    // push dữ liệu
+    chart.data.labels.push(label.toLocaleTimeString());
+    chart.data.datasets[0].data.push(data.bpm);
+    chart.data.datasets[1].data.push(data.spo2);
+
+    // giới hạn số điểm giữ trong chart
+    while (chart.data.labels.length > MAX_POINTS) {
+      chart.data.labels.shift();
+      chart.data.datasets.forEach(ds => ds.data.shift());
+    }
+
+    // cập nhật chart — dùng chế độ không animation nếu muốn rất mượt
+    // chart.update('none'); // --> không animation
+    chart.update(); // cập nhật với animation ngắn ở trên
+  } catch (err) {
+    console.error('Fetch error:', err);
+  }
+}
+
+// Kết nối/Ngắt kết nối bằng nút
+document.getElementById('connectBtn').addEventListener('click', () => {
+  const deviceId = document.getElementById('device_id').value.trim();
+  if (!deviceId) { alert('Vui lòng nhập Device ID'); return; }
+
+  if (!chart) initChart();
+
+  if (updateInterval) {
+    // ngắt
+    clearInterval(updateInterval);
+    updateInterval = null;
+    lastTimestampMs = 0;
+    document.getElementById('connectBtn').textContent = ' Kết nối thiết bị';
+    console.log('Đã ngắt kết nối');
+  } else {
+    // bắt đầu: lấy 1 lần ngay lập tức (không đợi interval)
+    fetchOnce(deviceId);
+    // set interval (2000ms) - bạn có thể tăng lên 3000ms nếu ESP gửi chậm
+    updateInterval = setInterval(() => fetchOnce(deviceId), 2000);
+    document.getElementById('connectBtn').textContent = ' Ngắt kết nối';
+    console.log('Bắt đầu lấy dữ liệu từ', deviceId);
+  }
+});
+</script>
+
+{% endblock content %}
