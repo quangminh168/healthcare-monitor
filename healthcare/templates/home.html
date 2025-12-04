@@ -1,20 +1,32 @@
 {% extends "layout.html" %}
 {% block content %}
-<h2 class="mb-4">Danh sách bệnh nhân</h2>
+<div class="mb-3">
+    <a href="{{ url_for('home', filter='newest') }}"
+       class="btn btn-sm btn-primary {% if filter == 'newest' %}disabled{% endif %}">
+        Mới nhất
+    </a>
 
-{% for post in posts %}
+    <a href="{{ url_for('home', filter='risk') }}"
+       class="btn btn-sm btn-danger {% if filter == 'risk' %}disabled{% endif %}">
+        Nguy cơ cao nhất
+    </a>
+</div>
+
+{% for post in posts.items %}
 <div class="card mb-4 p-3 shadow-sm">
   <h2>
-  <a class="article-title" href="{{ url_for('post', post_id=post.id) }}">
-    {{ post.patient_name }} ({{ post.age }} tuổi, {{ post.gender }})
-  </a>
+    <a class="article-title" href="{{ url_for('post', post_id=post.id) }}">
+      {{ post.patient_name }} ({{ post.age }} tuổi, {{ post.gender }})
+    </a>
   </h2>
   <p><strong>Tình trạng:</strong> {{ post.condition }}</p>
   <p><strong>Ghi chú:</strong> {{ post.notes }}</p>
   <small class="text-muted">
     Cập nhật: {{ post.date_posted.strftime('%Y-%m-%d %H:%M:%S') }}
   </small>
-
+  {% if post.risk is not none %}
+    <p><strong>Nguy cơ:</strong> {{ "%.2f"|format(post.risk*100) }} %</p>
+    {% endif %}
 
   <div class="mt-3">
     <button class="btn btn-outline-success connect-btn"
@@ -30,12 +42,35 @@
 </div>
 {% endfor %}
 
+<!-- Phân trang -->
+<div class="pagination mt-4">
+  {% if posts.has_prev %}
+    <a class="btn btn-outline-primary" href="{{ url_for('home', page=posts.prev_num) }}">Previous</a>
+  {% endif %}
+
+  {% for page_num in posts.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+    {% if page_num %}
+      {% if page_num == posts.page %}
+        <a class="btn btn-primary" href="#">{{ page_num }}</a>
+      {% else %}
+        <a class="btn btn-outline-primary" href="{{ url_for('home', page=page_num) }}">{{ page_num }}</a>
+      {% endif %}
+    {% else %}
+      ...
+    {% endif %}
+  {% endfor %}
+
+  {% if posts.has_next %}
+    <a class="btn btn-outline-primary" href="{{ url_for('home', page=posts.next_num) }}">Next</a>
+  {% endif %}
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-const charts = {};               // lưu nhiều chart theo bệnh nhân
-const intervals = {};            // mỗi bệnh nhân 1 interval
-const MAX_POINTS = 60;           // giới hạn số điểm để tránh lag
-const FETCH_INTERVAL = 2000;     // thời gian giữa các lần cập nhật
+const charts = {};
+const intervals = {};
+const MAX_POINTS = 60;
+const FETCH_INTERVAL = 2000;
 
 function initChart(postId) {
   const ctx = document.getElementById(`chart-${postId}`).getContext('2d');
@@ -50,14 +85,35 @@ function initChart(postId) {
     },
     options: {
       responsive: true,
-      animation: { duration: 200 },
+      animation: false,
       maintainAspectRatio: false,
       scales: {
         x: { ticks: { autoSkip: true, maxRotation: 0 } },
         y: { beginAtZero: false }
+      },
+      plugins: {
+        decimation: { enabled: true, algorithm: 'lttb', samples: 50 }
       }
     }
   });
+}
+
+async function fetchInitialData(postId, deviceId) {
+  try {
+    const res = await fetch(`/heartbeat/all/${encodeURIComponent(deviceId)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const chart = charts[postId];
+    data.forEach(d => {
+      const label = new Date(d.timestamp_ms).toLocaleTimeString();
+      chart.data.labels.push(label);
+      chart.data.datasets[0].data.push(d.bpm);
+      chart.data.datasets[1].data.push(d.spo2);
+    });
+    chart.update('none');
+  } catch(err) {
+    console.warn("Không thể load dữ liệu ban đầu:", err);
+  }
 }
 
 async function fetchData(postId, deviceId) {
@@ -65,67 +121,59 @@ async function fetchData(postId, deviceId) {
     const res = await fetch(`/heartbeat/latest/${encodeURIComponent(deviceId)}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-
-    if (!data || !data.timestamp_ms || data.bpm === 0) return; // bỏ qua mẫu lỗi
+    if (!data || !data.timestamp_ms || data.bpm === 0) return;
 
     const chart = charts[postId];
-    const label = new Date(data.timestamp_ms).toLocaleTimeString();
-
-    // Bỏ qua mẫu trùng timestamp
     if (chart.lastTimestamp === data.timestamp_ms) return;
     chart.lastTimestamp = data.timestamp_ms;
 
+    const label = new Date(data.timestamp_ms).toLocaleTimeString();
     chart.data.labels.push(label);
     chart.data.datasets[0].data.push(data.bpm);
     chart.data.datasets[1].data.push(data.spo2);
 
-    // Giới hạn số điểm hiển thị
     while (chart.data.labels.length > MAX_POINTS) {
       chart.data.labels.shift();
       chart.data.datasets.forEach(ds => ds.data.shift());
     }
-
-    chart.update('none'); // không animation để mượt hơn
+    chart.update('none');
   } catch (err) {
-    console.warn(` Thiết bị ${deviceId} mất kết nối hoặc không có dữ liệu.`);
+    console.warn(`Thiết bị ${deviceId} mất kết nối hoặc không có dữ liệu.`);
   }
 }
 
-// --- Xử lý sự kiện nhấn nút kết nối ---
 document.querySelectorAll(".connect-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
+  btn.addEventListener("click", async () => {
     const postId = btn.getAttribute("data-patient");
     const deviceId = btn.getAttribute("data-device");
     const chartContainer = document.getElementById(`chartContainer-${postId}`);
 
-    if (!deviceId) {
-      alert(" Bệnh nhân này chưa có Device ID để kết nối!");
-      return;
-    }
+    if (!deviceId) { alert("Bệnh nhân này chưa có Device ID!"); return; }
 
-    // Nếu chart chưa khởi tạo thì tạo mới
     if (!charts[postId]) {
       charts[postId] = initChart(postId);
       charts[postId].lastTimestamp = 0;
+      await fetchInitialData(postId, deviceId);
     }
 
-    // Nếu đang chạy thì dừng lại (ẩn chart)
     if (intervals[postId]) {
       clearInterval(intervals[postId]);
       intervals[postId] = null;
       chartContainer.style.display = "none";
-      btn.textContent = " Xem nhịp tim realtime";
-      console.log(` Dừng nhận dữ liệu cho ${deviceId}`);
-    }
-    // Nếu đang tắt thì bật lên (hiện chart)
-    else {
+      btn.textContent = "Xem nhịp tim realtime";
+    } else {
       chartContainer.style.display = "block";
-      fetchData(postId, deviceId); // gọi 1 lần ngay lập tức
+      fetchData(postId, deviceId);
       intervals[postId] = setInterval(() => fetchData(postId, deviceId), FETCH_INTERVAL);
-      btn.textContent = " Ngắt kết nối";
-      console.log(` Bắt đầu nhận dữ liệu từ ${deviceId}`);
+      btn.textContent = "Ngắt kết nối";
     }
   });
+});
+
+window.addEventListener('beforeunload', () => {
+  for (const key in intervals) {
+    clearInterval(intervals[key]);
+  }
 });
 </script>
 

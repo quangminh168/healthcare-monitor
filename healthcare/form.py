@@ -50,3 +50,21 @@ class PostForm(FlaskForm):
     notes = TextAreaField('Ghi chú', validators=[Length(max=500)])
     device_id = StringField('Mã thiết bị đo (nếu có)', validators=[Length(max=50)])  # 🔹 thêm dòng này
     submit = SubmitField('Lưu thông tin')
+class RequestResetForm(FlaskForm):
+    email = StringField('Email', validators=[DataRequired(), Email()])
+    submit = SubmitField('Gửi email đặt lại mật khẩu')
+
+    def validate_email(self, email):
+        user = User.query.filter_by(email=email.data).first()
+        if user is None:
+            raise ValidationError('Email này không tồn tại trong hệ thống.')
+
+
+
+class ResetPasswordForm(FlaskForm):
+    password = PasswordField('New Password', validators=[DataRequired()])
+    confirm_password = PasswordField(
+        'Confirm Password',
+        validators=[DataRequired(), EqualTo('password')]
+    )
+    submit = SubmitField('Đặt lại mật khẩu')
