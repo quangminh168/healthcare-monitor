@@ -2,8 +2,7 @@ import os
 import secrets
 import random
 import time
-import numpy as np
-import joblib
+
 from datetime import timezone
 from PIL import Image
 from flask_mail import Message
@@ -28,9 +27,7 @@ from healthcare.form import (
 # === BLUEPRINT ===
 main = Blueprint("main", __name__)
 
-# === Load ML model ===
-model = joblib.load("healthcare/patient_model.pkl")
-# Nếu file nằm ngoài → đổi path cho đúng
+
 
 
 # -------------------------- ROUTES -------------------------- #
@@ -176,9 +173,8 @@ def new_post():
         db.session.commit()
 
         # Tính risk
-        X = calculate_features(post.id)
-        predicted = model.predict_proba(X)[0][1]
-        post.risk = float(predicted)
+        post.risk = random.uniform(0, 1)
+
         db.session.commit()
 
         flash("Đã tạo hồ sơ bệnh nhân!", "success")
@@ -213,9 +209,8 @@ def update_post(post_id):
         post.device_id = form.device_id.data
         db.session.commit()
 
-        X = calculate_features(post.id)
-        predicted = model.predict_proba(X)[0][1]
-        post.risk = float(predicted)
+        post.risk = random.uniform(0, 1)
+
         db.session.commit()
 
         flash("Đã cập nhật!", "success")
@@ -372,14 +367,3 @@ def encode_gender(g):
     return 1 if g in ["nam", "male", "m"] else 0
 
 
-def calculate_features(post_id):
-    post = Post.query.get(post_id)
-    hr_data = HeartRateData.query.filter_by(device_id=post.device_id).all()
-
-    if not hr_data:
-        avg_bpm, avg_spo2 = 0, 0
-    else:
-        avg_bpm = sum([x.heart_rate for x in hr_data]) / len(hr_data)
-        avg_spo2 = sum([x.spo2 for x in hr_data]) / len(hr_data)
-
-    return np.array([[post.age, encode_gender(post.gender), avg_bpm, avg_spo2]])
