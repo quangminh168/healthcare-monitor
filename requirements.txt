@@ -3,7 +3,12 @@ Flask-SQLAlchemy
 Flask-Bcrypt
 Flask-Login
 Flask-Mail
+Flask-WTF
+email-validator
+
 pymysql
 gunicorn
-Pillow
 
+Pillow
+python-dotenv
+itsdangerous==2.1.2
