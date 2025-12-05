@@ -7,4 +7,6 @@ pymysql
 gunicorn
 python-dotenv
 Pillow==12.0.0
+Flask-WTF
+wtforms
 email-validator
