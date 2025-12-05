@@ -24,17 +24,19 @@ from healthcare.form import (
     UpdateAccountForm, RequestResetForm, ResetPasswordForm
 )
 
-# === BLUEPRINT ===
 main = Blueprint("main", __name__)
 
 
+# =======================================================
+#                        ROUTES
+# =======================================================
 
-
-# -------------------------- ROUTES -------------------------- #
-
-@main.route("/")
+@main.route("/", methods=["GET", "HEAD"])
 @login_required
 def home():
+    if request.method == "HEAD":
+        return "", 200
+
     page = request.args.get('page', 1, type=int)
     sort = request.args.get("filter", "newest")
 
@@ -49,13 +51,18 @@ def home():
     return render_template("home.html", title="Trang chủ", posts=posts, filter=sort)
 
 
-@main.route("/about")
+@main.route("/about", methods=["GET", "HEAD"])
 def about():
+    if request.method == "HEAD":
+        return "", 200
     return render_template("about.html", title="About")
 
 
-@main.route("/register", methods=["GET", "POST"])
+@main.route("/register", methods=["GET", "POST", "HEAD"])
 def register():
+    if request.method == "HEAD":
+        return "", 200
+
     if current_user.is_authenticated:
         return redirect(url_for("main.home"))
 
@@ -73,8 +80,11 @@ def register():
     return render_template("register.html", form=form)
 
 
-@main.route("/login", methods=["GET", "POST"])
+@main.route("/login", methods=["GET", "POST", "HEAD"])
 def login():
+    if request.method == "HEAD":
+        return "", 200
+
     if current_user.is_authenticated:
         return redirect(url_for("main.home"))
 
@@ -93,13 +103,17 @@ def login():
     return render_template("login.html", form=form)
 
 
-@main.route("/logout")
+@main.route("/logout", methods=["GET", "HEAD"])
 def logout():
+    if request.method == "HEAD":
+        return "", 200
     logout_user()
     return redirect(url_for("main.home"))
 
 
-# =================== PROFILE PICTURE =================== #
+# =======================================================
+#                 PROFILE PICTURE
+# =======================================================
 
 def save_picture(form_picture):
     random_hex = secrets.token_hex(8)
@@ -114,9 +128,12 @@ def save_picture(form_picture):
     return picture_fn
 
 
-@main.route("/account", methods=["GET", "POST"])
+@main.route("/account", methods=["GET", "POST", "HEAD"])
 @login_required
 def account():
+    if request.method == "HEAD":
+        return "", 200
+
     form = UpdateAccountForm()
 
     if form.validate_on_submit():
@@ -140,11 +157,16 @@ def account():
     return render_template("account.html", image_file=image_file, form=form)
 
 
-# =================== POSTS =================== #
+# =======================================================
+#                        POSTS
+# =======================================================
 
-@main.route("/post/new", methods=["GET", "POST"])
+@main.route("/post/new", methods=["GET", "POST", "HEAD"])
 @login_required
 def new_post():
+    if request.method == "HEAD":
+        return "", 200
+
     form = PostForm()
 
     if form.validate_on_submit():
@@ -161,7 +183,6 @@ def new_post():
         db.session.add(post)
         db.session.commit()
 
-        # Fake dữ liệu IoT
         for _ in range(100):
             db.session.add(
                 HeartRateData(
@@ -172,9 +193,7 @@ def new_post():
             )
         db.session.commit()
 
-        # Tính risk
         post.risk = random.uniform(0, 1)
-
         db.session.commit()
 
         flash("Đã tạo hồ sơ bệnh nhân!", "success")
@@ -183,16 +202,21 @@ def new_post():
     return render_template("create_post.html", form=form, legend="Hồ sơ mới")
 
 
-@main.route("/post/<int:post_id>")
+@main.route("/post/<int:post_id>", methods=["GET", "HEAD"])
 @login_required
 def post(post_id):
+    if request.method == "HEAD":
+        return "", 200
     post = Post.query.get_or_404(post_id)
     return render_template("post.html", post=post)
 
 
-@main.route("/post/<int:post_id>/update", methods=["GET", "POST"])
+@main.route("/post/<int:post_id>/update", methods=["GET", "POST", "HEAD"])
 @login_required
 def update_post(post_id):
+    if request.method == "HEAD":
+        return "", 200
+
     post = Post.query.get_or_404(post_id)
 
     if post.author != current_user:
@@ -210,7 +234,6 @@ def update_post(post_id):
         db.session.commit()
 
         post.risk = random.uniform(0, 1)
-
         db.session.commit()
 
         flash("Đã cập nhật!", "success")
@@ -227,9 +250,12 @@ def update_post(post_id):
     return render_template("create_post.html", form=form, legend="Cập nhật hồ sơ")
 
 
-@main.route("/post/<int:post_id>/delete", methods=["POST"])
+@main.route("/post/<int:post_id>/delete", methods=["POST", "HEAD"])
 @login_required
 def delete_post(post_id):
+    if request.method == "HEAD":
+        return "", 200
+
     post = Post.query.get_or_404(post_id)
 
     if post.author != current_user:
@@ -242,10 +268,15 @@ def delete_post(post_id):
     return redirect(url_for("main.home"))
 
 
-# =================== HEARTBEAT API =================== #
+# =======================================================
+#                 HEARTBEAT API
+# =======================================================
 
-@main.route("/heartbeat/latest/<string:device_id>")
+@main.route("/heartbeat/latest/<string:device_id>", methods=["GET", "HEAD"])
 def heartbeat_latest(device_id):
+    if request.method == "HEAD":
+        return "", 200
+
     last = HeartRateData.query.filter_by(device_id=device_id).order_by(HeartRateData.timestamp.desc()).first()
 
     if not last:
@@ -260,8 +291,11 @@ def heartbeat_latest(device_id):
     })
 
 
-@main.route("/api/heartbeat", methods=["POST"])
+@main.route("/api/heartbeat", methods=["POST", "HEAD"])
 def receive_heartbeat():
+    if request.method == "HEAD":
+        return "", 200
+
     try:
         data = request.get_json()
 
@@ -277,7 +311,6 @@ def receive_heartbeat():
         db.session.add(entry)
         db.session.commit()
 
-        # Giữ 100 bản ghi gần nhất
         total = HeartRateData.query.count()
         if total > 100:
             old = HeartRateData.query.order_by(HeartRateData.timestamp.asc()).limit(total - 100)
@@ -291,7 +324,9 @@ def receive_heartbeat():
         return jsonify({"error": str(e)}), 500
 
 
-# =================== PASSWORD RESET =================== #
+# =======================================================
+#                 PASSWORD RESET
+# =======================================================
 
 def get_serializer():
     return Serializer(current_app.config["SECRET_KEY"])
@@ -317,8 +352,11 @@ Nếu bạn không yêu cầu, hãy bỏ qua.
     mail.send(msg)
 
 
-@main.route("/reset_password", methods=["GET", "POST"])
+@main.route("/reset_password", methods=["GET", "POST", "HEAD"])
 def reset_request():
+    if request.method == "HEAD":
+        return "", 200
+
     if current_user.is_authenticated:
         return redirect(url_for("main.home"))
 
@@ -333,8 +371,11 @@ def reset_request():
     return render_template("reset_request.html", form=form)
 
 
-@main.route("/reset_password/<token>", methods=["GET", "POST"])
+@main.route("/reset_password/<token>", methods=["GET", "POST", "HEAD"])
 def reset_token(token):
+    if request.method == "HEAD":
+        return "", 200
+
     if current_user.is_authenticated:
         return redirect(url_for("main.home"))
 
@@ -360,10 +401,10 @@ def reset_token(token):
     return render_template("reset_token.html", form=form)
 
 
-# =================== AI FEATURE =================== #
+# =======================================================
+#                 AI FEATURE
+# =======================================================
 
 def encode_gender(g):
     g = g.lower()
     return 1 if g in ["nam", "male", "m"] else 0
-
-
