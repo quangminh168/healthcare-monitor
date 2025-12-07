@@ -5,5 +5,5 @@ class Config:
     MAIL_SERVER = 'smtp.gmail.com'
     MAIL_PORT = 587
     MAIL_USE_TLS = True
-    MAIL_USERNAME = 'quangminhh168@gmail.com'  # <-- THAY BẰNG EMAIL CỦA BẠN
-    MAIL_PASSWORD = 'fbdm mbnu wbky ygaq'    # <-- PASS APP gmail
+    MAIL_USERNAME = ''  # <-- THAY BẰNG EMAIL CỦA BẠN
+    MAIL_PASSWORD = ''    # <-- PASS APP gmail
