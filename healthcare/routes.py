@@ -4,19 +4,48 @@ from datetime import timedelta, timezone
 
 from PIL import Image
 from flask import render_template, url_for, flash, redirect, request, jsonify, abort
-from healthcare.form import RegistrationForm, LoginForm, PostForm,UpdateAccountForm
+from healthcare.form import (
+    RegistrationForm,
+    LoginForm,
+    PostForm,
+    UpdateAccountForm,
+    RequestResetForm,
+    ResetPasswordForm
+)
+
 from healthcare import app, db, bcrypt
 from healthcare.models import User, Post, HeartRateData
 from flask_login import login_user, logout_user, login_required, current_user
 import time, random
+from itsdangerous import URLSafeTimedSerializer as Serializer
+from flask_mail import Message
+from healthcare import mail
+from flask import current_app
+import joblib
+import numpy as np
+
+model = joblib.load("patient_model.pkl")
 
 
 
 @app.route("/")
 @login_required
 def home():
-    posts = Post.query.filter_by(user_id=current_user.id).order_by(Post.date_posted.desc()).all()
-    return render_template("home.html", title="Trang chủ", posts=posts)
+    page = request.args.get('page', 1, type=int)
+    sort = request.args.get("filter", "newest")
+
+    query = Post.query.filter_by(user_id=current_user.id)
+
+    # Sắp xếp
+    if sort == "risk":
+        query = query.order_by(Post.risk.desc())
+    else:
+        query = query.order_by(Post.date_posted.desc())
+
+    posts = query.paginate(page=page, per_page=5)
+    return render_template("home.html", title="Trang chủ", posts=posts, filter=sort)
+
+
 
 @app.route("/about")
 def about():
@@ -87,11 +116,12 @@ def account():
     image_file = url_for('static', filename='profile_pics/' + current_user.image_file   )
     return render_template("account.html", title="Account", image_file=image_file,form=form)
 
-@app.route("/post/new",methods=["GET","POST"])
+@app.route("/post/new", methods=["GET", "POST"])
 @login_required
 def new_post():
     form = PostForm()
     if form.validate_on_submit():
+        # 1) Tạo Post bình thường
         post = Post(
             patient_name=form.patient_name.data,
             age=form.age.data,
@@ -103,9 +133,38 @@ def new_post():
         )
         db.session.add(post)
         db.session.commit()
-        flash("Hồ sơ bệnh nhân đã được lưu!", "success")
+
+        # 2) Tạo 100 nhịp tim ngẫu nhiên mô phỏng dữ liệu IoT
+        bpm_data = [random.randint(60, 100) for _ in range(100)]
+        spo2_data = [random.randint(93, 100) for _ in range(100)]
+        for i in range(100):
+            hr = HeartRateData(
+                device_id=form.device_id.data,
+                heart_rate=bpm_data[i],
+                spo2=spo2_data[i]
+            )
+            db.session.add(hr)
+        db.session.commit()  # commit xong trước khi tính features
+
+        # 3) Tính feature và dự đoán risk
+        X = calculate_features(post.id)
+        print("DEBUG X:", X)
+        predicted_risk = model.predict_proba(X)[0][1]
+        print("DEBUG predicted_risk:", predicted_risk)
+        post.risk = float(predicted_risk)  # lưu chính xác
+        db.session.commit()
+
+        flash(f"Hồ sơ bệnh nhân đã được lưu! Nguy cơ bệnh: {post.risk*100:.2f}%", "success")
         return redirect(url_for("home"))
-    return render_template("create_post.html", title="Hồ sơ bệnh nhân mới", form=form, legend="Thêm hồ sơ bệnh nhân")
+
+    return render_template(
+        "create_post.html",
+        title="Hồ sơ bệnh nhân mới",
+        form=form,
+        legend="Thêm hồ sơ bệnh nhân"
+    )
+
+
 
 @app.route("/post/<int:post_id>",methods=["GET","POST"])
 @login_required
@@ -130,9 +189,12 @@ def update_post(post_id):
         post.notes = form.notes.data
         post.device_id = form.device_id.data  # ✅ thêm dòng này
         db.session.commit()
-        flash("Thông tin bệnh nhân đã được cập nhật!", "success")
-        return redirect(url_for("home"))
+        X = calculate_features(post.id)
+        post.risk = round(model.predict_proba(X)[0][1], 2)
+        db.session.commit()
 
+        flash(f"Thông tin bệnh nhân đã được cập nhật! Nguy cơ bệnh: {post.risk * 100:.2f}%", "success")
+        return redirect(url_for("home"))
     elif request.method == "GET":
         form.patient_name.data = post.patient_name
         form.age.data = post.age
@@ -174,7 +236,7 @@ def heartbeat_latest(device_id):
 def receive_heartbeat():
     try:
         data = request.get_json()
-        print("📡 Nhận từ ESP:", data)
+        print(" Nhận từ ESP:", data)
 
         if not data or "device_id" not in data or "heart_rate" not in data or "spo2" not in data:
             print(" Thiếu dữ liệu hoặc sai định dạng:", data)
@@ -203,3 +265,102 @@ def receive_heartbeat():
         return jsonify({"error": str(e)}), 500
 
 
+def get_serializer():
+    return Serializer(current_app.config['SECRET_KEY'])
+
+def send_reset_email(user):
+    s = get_serializer()
+    token = s.dumps({'user_id': user.id})
+
+    msg = Message("Reset Your Password",
+                  sender=current_app.config['MAIL_USERNAME'],
+                  recipients=[user.email])
+
+    msg.body = f'''Để đặt lại mật khẩu, click vào link sau:
+{url_for('reset_token', token=token, _external=True)}
+
+Nếu bạn không yêu cầu, hãy bỏ qua email này.
+'''
+    mail.send(msg)
+@app.route("/reset_password", methods=['GET', 'POST'])
+def reset_request():
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
+
+    form = RequestResetForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(email=form.email.data).first()
+        # user chắc chắn tồn tại vì validator đã check
+        send_reset_email(user)
+        flash("Hệ thống đã gửi email đặt lại mật khẩu. Vui lòng kiểm tra hộp thư.", "success")
+        return redirect(url_for('login'))
+
+    return render_template('reset_request.html', title='Reset Password', form=form)
+
+
+
+@app.route("/reset_password/<token>", methods=['GET','POST'])
+def reset_token(token):
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
+
+    s = get_serializer()
+
+    try:
+        data = s.loads(token, max_age=1800)      # 30 phút
+        user_id = data['user_id']
+    except:
+        flash("Token không hợp lệ hoặc đã hết hạn.", "warning")
+        return redirect(url_for('reset_request'))
+
+    user = User.query.get(user_id)
+    if user is None:
+        flash("Không tìm thấy người dùng.", "warning")
+        return redirect(url_for('reset_request'))
+
+    form = ResetPasswordForm()
+    if form.validate_on_submit():
+        hashed_pw = bcrypt.generate_password_hash(form.password.data).decode('utf-8')
+        user.password = hashed_pw
+        db.session.commit()
+        flash("Mật khẩu đã được cập nhật! Hãy đăng nhập.", "success")
+        return redirect(url_for('login'))
+
+    return render_template('reset_token.html', title='Reset Password', form=form)
+
+
+@app.route("/heartbeat/all/<string:device_id>")
+def heartbeat_all(device_id):
+    data_rows = HeartRateData.query.filter_by(device_id=device_id).order_by(HeartRateData.timestamp.asc()).all()
+    result = []
+    for row in data_rows:
+        ts = row.timestamp.astimezone(timezone.utc)
+        result.append({
+            "timestamp_ms": int(ts.timestamp()*1000),
+            "bpm": row.heart_rate,
+            "spo2": row.spo2
+        })
+    return jsonify(result)
+
+
+def encode_gender(gender):
+    g = gender.lower()
+    if g in ["nam", "male", "m"]:
+        return 1
+    return 0
+
+
+
+def calculate_features(post_id):
+    post = Post.query.get(post_id)
+    hr_data = HeartRateData.query.filter_by(device_id=post.device_id).all()
+
+    if not hr_data:
+        avg_bpm = 0
+        avg_spo2 = 0
+    else:
+        avg_bpm = sum([d.heart_rate for d in hr_data]) / len(hr_data)
+        avg_spo2 = sum([d.spo2 for d in hr_data]) / len(hr_data)
+
+    X = np.array([[post.age, encode_gender(post.gender), avg_bpm, avg_spo2]])
+    return X

@@ -31,7 +31,7 @@
                 {{ form.notes(class="form-control form-control-lg") }}
             </div>
 
-            <!--  Thêm ô nhập Device ID -->
+            <!--  Thêm Device ID -->
             <div class="form-group">
                 <label for="device_id" class="form-control-label">Mã thiết bị (Device ID)</label>
                 <input type="text" name="device_id" id="device_id" class="form-control form-control-lg" placeholder="Nhập mã thiết bị ESP8266 (nếu có)">
@@ -39,7 +39,7 @@
         </fieldset>
 
         <!--  Nút kết nối -->
-        <button type="button" class="btn btn-outline-success" id="connectBtn">🔗 Kết nối thiết bị</button>
+        <button type="button" class="btn btn-outline-success" id="connectBtn"> Kết nối thiết bị</button>
 
         <!--  Biểu đồ -->
         <div id="chartContainer" style="height: 350px; margin-top:20px;">
@@ -120,9 +120,8 @@ async function fetchOnce(deviceId) {
       chart.data.datasets.forEach(ds => ds.data.shift());
     }
 
-    // cập nhật chart — dùng chế độ không animation nếu muốn rất mượt
-    // chart.update('none'); // --> không animation
-    chart.update(); // cập nhật với animation ngắn ở trên
+    // cập nhật chart
+    chart.update();
   } catch (err) {
     console.error('Fetch error:', err);
   }
