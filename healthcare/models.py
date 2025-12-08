@@ -28,7 +28,6 @@ class Post(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     risk = db.Column(db.Float, default=0.0)  # xác suất mắc bệnh từ mô hình AI
 
-
 class HeartRateData(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     device_id = db.Column(db.String(50))

@@ -1,5 +1,8 @@
 {% extends "layout.html" %}
 {% block content %}
+
+
+
 <div class="mb-3">
     <a href="{{ url_for('home', filter='newest') }}"
        class="btn btn-sm btn-primary {% if filter == 'newest' %}disabled{% endif %}">
@@ -14,6 +17,13 @@
 
 {% for post in posts.items %}
 <div class="card mb-4 p-3 shadow-sm">
+    <p><strong>Thiết bị:</strong>
+        {% if post.device_id == "esp8266-01" %}
+            Real Device (ESP8266)
+        {% else %}
+            Simulated
+        {% endif %}
+    </p>
   <h2>
     <a class="article-title" href="{{ url_for('post', post_id=post.id) }}">
       {{ post.patient_name }} ({{ post.age }} tuổi, {{ post.gender }})
@@ -153,7 +163,11 @@ document.querySelectorAll(".connect-btn").forEach(btn => {
     if (!charts[postId]) {
       charts[postId] = initChart(postId);
       charts[postId].lastTimestamp = 0;
-      await fetchInitialData(postId, deviceId);
+      if (!charts[postId].loadedInitial) {
+        await fetchInitialData(postId, deviceId);
+        charts[postId].loadedInitial = true;
+}
+
     }
 
     if (intervals[postId]) {

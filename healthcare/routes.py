@@ -133,18 +133,19 @@ def new_post():
         )
         db.session.add(post)
         db.session.commit()
-
-        # 2) Tạo 100 nhịp tim ngẫu nhiên mô phỏng dữ liệu IoT
-        bpm_data = [random.randint(60, 100) for _ in range(100)]
-        spo2_data = [random.randint(93, 100) for _ in range(100)]
-        for i in range(100):
-            hr = HeartRateData(
-                device_id=form.device_id.data,
-                heart_rate=bpm_data[i],
-                spo2=spo2_data[i]
-            )
-            db.session.add(hr)
-        db.session.commit()  # commit xong trước khi tính features
+        if post.device_id != "esp8266-01":
+    # simulated device → sinh dữ liệu 100 mẫu
+            # 2) Tạo 100 nhịp tim ngẫu nhiên mô phỏng dữ liệu IoT
+            bpm_data = [random.randint(60, 100) for _ in range(100)]
+            spo2_data = [random.randint(93, 100) for _ in range(100)]
+            for i in range(100):
+                hr = HeartRateData(
+                    device_id=form.device_id.data,
+                    heart_rate=bpm_data[i],
+                    spo2=spo2_data[i]
+                )
+                db.session.add(hr)
+            db.session.commit()  # commit xong trước khi tính features
 
         # 3) Tính feature và dự đoán risk
         X = calculate_features(post.id)
@@ -187,7 +188,7 @@ def update_post(post_id):
         post.gender = form.gender.data
         post.condition = form.condition.data
         post.notes = form.notes.data
-        post.device_id = form.device_id.data  # ✅ thêm dòng này
+        post.device_id = form.device_id.data  #  thêm dòng này
         db.session.commit()
         X = calculate_features(post.id)
         post.risk = round(model.predict_proba(X)[0][1], 2)
@@ -331,7 +332,18 @@ def reset_token(token):
 
 @app.route("/heartbeat/all/<string:device_id>")
 def heartbeat_all(device_id):
-    data_rows = HeartRateData.query.filter_by(device_id=device_id).order_by(HeartRateData.timestamp.asc()).all()
+    post = Post.query.filter_by(device_id=device_id).first()
+
+    if post and post.device_id == "esp8266-01":
+        # chỉ lấy 50 bản ghi gần nhất
+        data_rows = HeartRateData.query.filter_by(device_id=device_id) \
+            .order_by(HeartRateData.timestamp.desc()) \
+            .limit(50).all()[::-1]
+    else:
+        # simulated → giữ nguyên 100 bản ghi
+        data_rows = HeartRateData.query.filter_by(device_id=device_id) \
+            .order_by(HeartRateData.timestamp.asc()).all()
+
     result = []
     for row in data_rows:
         ts = row.timestamp.astimezone(timezone.utc)
