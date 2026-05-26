@@ -1,7 +1,7 @@
 import os
 import secrets
 from datetime import timedelta, timezone
-
+import pandas as pd
 from PIL import Image
 from flask import render_template, url_for, flash, redirect, request, jsonify, abort
 from healthcare.form import (
@@ -234,37 +234,43 @@ def heartbeat_latest(device_id):
         return jsonify({"timestamp_iso": None, "timestamp_ms": 0, "bpm": 0, "spo2": 0})
 
 @app.route("/api/heartbeat", methods=["POST"])
+@app.route("/api/heartbeat", methods=["POST"])
 def receive_heartbeat():
     try:
         data = request.get_json()
         print(" Nhận từ ESP:", data)
 
-        if not data or "device_id" not in data or "heart_rate" not in data or "spo2" not in data:
-            print(" Thiếu dữ liệu hoặc sai định dạng:", data)
+        if not data or "device_id" not in data or \
+           "heart_rate" not in data or "spo2" not in data:
             return jsonify({"error": "Invalid data"}), 400
 
+        hr = float(data["heart_rate"])
+        spo2 = float(data["spo2"])
+
         new_data = HeartRateData(
-            device_id=data.get("device_id", "unknown"),
-            heart_rate=data.get("heart_rate", 0),
-            spo2=data.get("spo2", 0)
+            device_id=data["device_id"],
+            heart_rate=hr,
+            spo2=spo2
         )
         db.session.add(new_data)
+        db.session.flush()   # 🔥 then chốt
+
+        if hr > 0 and spo2 > 0:
+            post = Post.query.filter_by(device_id=data["device_id"]) \
+                .order_by(Post.date_posted.desc()) \
+                .first()
+
+            if post:
+                X = calculate_features(post.id)
+                post.risk = float(model.predict_proba(X)[0][1])
+
         db.session.commit()
-
-        # Xóa dữ liệu cũ, chỉ giữ 100 bản ghi gần nhất
-        total = HeartRateData.query.count()
-        if total > 100:
-            old = HeartRateData.query.order_by(HeartRateData.timestamp.asc()).limit(total - 100)
-            for row in old:
-                db.session.delete(row)
-            db.session.commit()
-
         return jsonify({"message": "Data saved"}), 201
 
     except Exception as e:
+        db.session.rollback()
         print(" Lỗi khi lưu dữ liệu:", e)
         return jsonify({"error": str(e)}), 500
-
 
 def get_serializer():
     return Serializer(current_app.config['SECRET_KEY'])
@@ -365,14 +371,32 @@ def encode_gender(gender):
 
 def calculate_features(post_id):
     post = Post.query.get(post_id)
-    hr_data = HeartRateData.query.filter_by(device_id=post.device_id).all()
+    if not post or not post.device_id:
+        return pd.DataFrame([{
+            "age": post.age if post else 0,
+            "gender": encode_gender(post.gender) if post else 0,
+            "heart_rate_avg": 0,
+            "spo2_avg": 0
+        }])
+
+    hr_data = HeartRateData.query \
+        .filter_by(device_id=post.device_id) \
+        .order_by(HeartRateData.timestamp.desc()) \
+        .limit(50) \
+        .all()
 
     if not hr_data:
-        avg_bpm = 0
-        avg_spo2 = 0
+        hr_avg = 0
+        spo2_avg = 0
     else:
-        avg_bpm = sum([d.heart_rate for d in hr_data]) / len(hr_data)
-        avg_spo2 = sum([d.spo2 for d in hr_data]) / len(hr_data)
+        hr_avg = sum(d.heart_rate for d in hr_data) / len(hr_data)
+        spo2_avg = sum(d.spo2 for d in hr_data) / len(hr_data)
 
-    X = np.array([[post.age, encode_gender(post.gender), avg_bpm, avg_spo2]])
+    X = pd.DataFrame([{
+        "age": post.age,
+        "gender": encode_gender(post.gender),
+        "heart_rate_avg": hr_avg,
+        "spo2_avg": spo2_avg
+    }])
+
     return X
