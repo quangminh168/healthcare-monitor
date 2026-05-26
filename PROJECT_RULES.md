@@ -1,0 +1,9 @@
+- Backend: Flask
+- Database: MySQL
+- Do not modify database schema without confirmation
+- Use modular structure
+- Avoid global variables
+- Separate routes/services/models
+- Do not hardcode secrets
+- Keep API responses backward compatible
+- Use environment variables
