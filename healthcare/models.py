@@ -29,6 +29,11 @@ class Post(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     risk = db.Column(db.Float, default=0.0)  # xác suất mắc bệnh từ mô hình AI
 
+def is_critical_reading(heart_rate, spo2):
+    """Check if a reading represents a critical medical event."""
+    return heart_rate < 40 or heart_rate > 180 or spo2 < 85
+
+
 class HeartRateData(db.Model):
     __table_args__ = (
         db.Index('idx_hrd_device_timestamp', 'device_id', 'timestamp'),
@@ -39,9 +44,50 @@ class HeartRateData(db.Model):
     heart_rate = db.Column(db.Float)
     spo2 = db.Column(db.Float)
     timestamp = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    is_critical = db.Column(db.Boolean, default=False, nullable=False)
 
     def __repr__(self):
         return f"<HRData {self.device_id} {self.heart_rate} bpm>"
+
+
+class HeartRateHourly(db.Model):
+    """Hourly aggregation of heart rate data. Retained for 90 days."""
+    __table_args__ = (
+        db.Index('idx_hrh_device_hour', 'device_id', 'hour'),
+        db.UniqueConstraint('device_id', 'hour', name='uq_hrh_device_hour'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.String(50), nullable=False)
+    hour = db.Column(db.DateTime, nullable=False)
+    hr_avg = db.Column(db.Float)
+    hr_min = db.Column(db.Float)
+    hr_max = db.Column(db.Float)
+    spo2_avg = db.Column(db.Float)
+    spo2_min = db.Column(db.Float)
+    spo2_max = db.Column(db.Float)
+    reading_count = db.Column(db.Integer, nullable=False, default=0)
+    has_critical = db.Column(db.Boolean, default=False, nullable=False)
+
+
+class HeartRateDaily(db.Model):
+    """Daily aggregation of heart rate data. Retained for 365 days."""
+    __table_args__ = (
+        db.Index('idx_hrd_device_day', 'device_id', 'day'),
+        db.UniqueConstraint('device_id', 'day', name='uq_hrd_device_day'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.String(50), nullable=False)
+    day = db.Column(db.Date, nullable=False)
+    hr_avg = db.Column(db.Float)
+    hr_min = db.Column(db.Float)
+    hr_max = db.Column(db.Float)
+    spo2_avg = db.Column(db.Float)
+    spo2_min = db.Column(db.Float)
+    spo2_max = db.Column(db.Float)
+    reading_count = db.Column(db.Integer, nullable=False, default=0)
+    critical_count = db.Column(db.Integer, nullable=False, default=0)
 
 class DeviceApiKey(db.Model):
     id = db.Column(db.Integer, primary_key=True)

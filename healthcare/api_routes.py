@@ -1,7 +1,7 @@
 from datetime import timezone
 from flask import Blueprint, request, jsonify, current_app
 from healthcare import db, limiter
-from healthcare.models import Post, HeartRateData, DeviceApiKey
+from healthcare.models import Post, HeartRateData, DeviceApiKey, is_critical_reading
 from healthcare.ml_service import predict_risk
 
 api_bp = Blueprint("api", __name__)
@@ -41,6 +41,7 @@ def receive_heartbeat():
             device_id=data["device_id"],
             heart_rate=hr,
             spo2=spo2,
+            is_critical=is_critical_reading(hr, spo2),
         )
         db.session.add(new_data)
         db.session.flush()
