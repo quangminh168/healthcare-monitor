@@ -1,3 +1,4 @@
+import logging
 from datetime import timezone
 from flask import Blueprint, request, jsonify, current_app
 from healthcare import db, limiter
@@ -32,7 +33,7 @@ def receive_heartbeat():
         if auth_error:
             return auth_error
 
-        print("Received from ESP:", data)
+        logging.getLogger(__name__).info("Received from ESP: %s", data)
 
         hr = float(data["heart_rate"])
         spo2 = float(data["spo2"])
@@ -61,7 +62,7 @@ def receive_heartbeat():
 
     except Exception as e:
         db.session.rollback()
-        print("Error saving data:", e)
+        logging.getLogger(__name__).error("Error saving data: %s", e)
         return jsonify({"error": str(e)}), 500
 
 
@@ -72,7 +73,7 @@ def heartbeat_latest(device_id):
         .order_by(HeartRateData.timestamp.desc())
         .first()
     )
-    print(f"Sending latest data for {device_id}")
+    logging.getLogger(__name__).debug("Sending latest data for %s", device_id)
     if last_data:
         ts = last_data.timestamp.astimezone(timezone.utc)
         return jsonify({

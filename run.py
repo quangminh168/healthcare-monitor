@@ -1,7 +1,14 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
-from healthcare import app
+from healthcare import create_app
 
-if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=True)
+app = create_app()
 
-
+if __name__ == '__main__':
+    app.run(
+        host=os.environ.get('FLASK_HOST', '0.0.0.0'),
+        port=int(os.environ.get('FLASK_PORT', 5000)),
+        debug=app.config.get('DEBUG', False),
+    )

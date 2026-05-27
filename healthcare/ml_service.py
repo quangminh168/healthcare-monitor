@@ -1,6 +1,9 @@
+import logging
 import joblib
 import pandas as pd
 from healthcare.models import Post, HeartRateData
+
+logger = logging.getLogger(__name__)
 
 _model = None
 _model_loaded = False
@@ -14,9 +17,9 @@ def get_model():
         try:
             _model = joblib.load("patient_model.pkl")
         except FileNotFoundError:
-            print("WARNING: patient_model.pkl not found. Risk predictions disabled.")
+            logger.warning("patient_model.pkl not found. Risk predictions disabled.")
         except Exception as e:
-            print(f"WARNING: Failed to load model: {e}. Risk predictions disabled.")
+            logger.warning("Failed to load model: %s. Risk predictions disabled.", e)
     return _model
 
 
