@@ -17,3 +17,7 @@ class Config:
     MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'true').lower() == 'true'
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME', '')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', '')
+
+    RATELIMIT_LOGIN = os.environ.get('RATELIMIT_LOGIN', '5/minute')
+    RATELIMIT_REGISTER = os.environ.get('RATELIMIT_REGISTER', '3/minute')
+    RATELIMIT_HEARTBEAT = os.environ.get('RATELIMIT_HEARTBEAT', '60/minute')

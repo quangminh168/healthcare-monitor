@@ -26,9 +26,9 @@
           </button>
           <div class="collapse navbar-collapse" id="navbarToggle">
             <div class="navbar-nav mr-auto">
-                <a class="nav-item nav-link" href="{{ url_for("new_post")}}">New Post</a>
-              <a class="nav-item nav-link" href="{{ url_for("home")}}">Home</a>
-              <a class="nav-item nav-link" href="{{ url_for("about")}}">About</a>
+                <a class="nav-item nav-link" href="{{ url_for("dashboard.new_post")}}">New Post</a>
+              <a class="nav-item nav-link" href="{{ url_for("dashboard.home")}}">Home</a>
+              <a class="nav-item nav-link" href="{{ url_for("dashboard.about")}}">About</a>
             </div>
             <!-- Navbar Right Side -->
               <div class="navbar-nav">
@@ -40,15 +40,15 @@
                       class="rounded-circle mr-2"
                       style="width:35px; height:35px; object-fit:cover; border:2px solid #fff;"
                     >
-                    <a href="{{ url_for('account') }}" class="nav-link text-light font-weight-bold mr-3">
+                    <a href="{{ url_for('auth.account') }}" class="nav-link text-light font-weight-bold mr-3">
                     {{ current_user.username }}
                     </a>
 
-                    <a class="nav-item nav-link text-warning" href="{{ url_for('logout') }}">Log Out</a>
+                    <a class="nav-item nav-link text-warning" href="{{ url_for('auth.logout') }}">Log Out</a>
                   </div>
               {% else %}
-                  <a class="nav-item nav-link" href="{{ url_for('login') }}">Login</a>
-                  <a class="nav-item nav-link" href="{{ url_for('register') }}">Register</a>
+                  <a class="nav-item nav-link" href="{{ url_for('auth.login') }}">Login</a>
+                  <a class="nav-item nav-link" href="{{ url_for('auth.register') }}">Register</a>
               {% endif %}
             </div>
 

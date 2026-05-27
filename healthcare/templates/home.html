@@ -4,12 +4,12 @@
 
 
 <div class="mb-3">
-    <a href="{{ url_for('home', filter='newest') }}"
+    <a href="{{ url_for('dashboard.home', filter='newest') }}"
        class="btn btn-sm btn-primary {% if filter == 'newest' %}disabled{% endif %}">
         Mới nhất
     </a>
 
-    <a href="{{ url_for('home', filter='risk') }}"
+    <a href="{{ url_for('dashboard.home', filter='risk') }}"
        class="btn btn-sm btn-danger {% if filter == 'risk' %}disabled{% endif %}">
         Nguy cơ cao nhất
     </a>
@@ -25,7 +25,7 @@
         {% endif %}
     </p>
   <h2>
-    <a class="article-title" href="{{ url_for('post', post_id=post.id) }}">
+    <a class="article-title" href="{{ url_for('dashboard.post', post_id=post.id) }}">
       {{ post.patient_name }} ({{ post.age }} tuổi, {{ post.gender }})
     </a>
   </h2>
@@ -55,7 +55,7 @@
 <!-- Phân trang -->
 <div class="pagination mt-4">
   {% if posts.has_prev %}
-    <a class="btn btn-outline-primary" href="{{ url_for('home', page=posts.prev_num) }}">Previous</a>
+    <a class="btn btn-outline-primary" href="{{ url_for('dashboard.home', page=posts.prev_num) }}">Previous</a>
   {% endif %}
 
   {% for page_num in posts.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
@@ -63,7 +63,7 @@
       {% if page_num == posts.page %}
         <a class="btn btn-primary" href="#">{{ page_num }}</a>
       {% else %}
-        <a class="btn btn-outline-primary" href="{{ url_for('home', page=page_num) }}">{{ page_num }}</a>
+        <a class="btn btn-outline-primary" href="{{ url_for('dashboard.home', page=page_num) }}">{{ page_num }}</a>
       {% endif %}
     {% else %}
       ...
@@ -71,7 +71,7 @@
   {% endfor %}
 
   {% if posts.has_next %}
-    <a class="btn btn-outline-primary" href="{{ url_for('home', page=posts.next_num) }}">Next</a>
+    <a class="btn btn-outline-primary" href="{{ url_for('dashboard.home', page=posts.next_num) }}">Next</a>
   {% endif %}
 </div>
 

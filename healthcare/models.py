@@ -1,6 +1,7 @@
 from healthcare import db, login_manager
 from datetime import datetime, timezone
 from flask_login import UserMixin
+import secrets
 
 
 @login_manager.user_loader
@@ -37,3 +38,8 @@ class HeartRateData(db.Model):
 
     def __repr__(self):
         return f"<HRData {self.device_id} {self.heart_rate} bpm>"
+
+class DeviceApiKey(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.String(50), unique=True, nullable=False)
+    api_key = db.Column(db.String(64), unique=True, nullable=False, default=lambda: secrets.token_hex(32))
