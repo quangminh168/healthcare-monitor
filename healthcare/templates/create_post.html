@@ -57,9 +57,40 @@
 
 <script>
 let chart = null;
-let updateInterval = null;
-let lastTimestampMs = 0;    // lưu epoch ms của mẫu mới nhất đã xử lý
-const MAX_POINTS = 60;      // độ dài tối đa của đồ thị (tùy chỉnh)
+let lastTimestampMs = 0;
+const MAX_POINTS = 60;
+const BASE_INTERVAL = 2000;
+const MAX_INTERVAL = 30000;
+let pollTimer = null;
+let staleCount = 0;
+let errorCount = 0;
+let pollActive = false;
+let pageVisible = true;
+
+document.addEventListener('visibilitychange', () => {
+  pageVisible = !document.hidden;
+  if (!pageVisible && pollTimer) {
+    clearTimeout(pollTimer);
+    pollTimer = null;
+  } else if (pageVisible && pollActive && !pollTimer) {
+    scheduleNext();
+  }
+});
+
+function getInterval() {
+  if (errorCount > 0) {
+    return Math.min(BASE_INTERVAL * Math.pow(2, errorCount), MAX_INTERVAL);
+  }
+  if (staleCount > 3) {
+    return Math.min(BASE_INTERVAL + (staleCount - 3) * 1000, MAX_INTERVAL);
+  }
+  return BASE_INTERVAL;
+}
+
+function scheduleNext() {
+  if (!pollActive || !pageVisible) return;
+  pollTimer = setTimeout(() => pollOnce(), getInterval());
+}
 
 function initChart() {
   const ctx = document.getElementById('chart').getContext('2d');
@@ -74,7 +105,7 @@ function initChart() {
     },
     options: {
       responsive: true,
-      animation: { duration: 200 },          // ngắn hơn để mượt
+      animation: { duration: 200 },
       maintainAspectRatio: false,
       scales: {
         x: { ticks: { maxRotation: 0, autoSkip: true } },
@@ -84,71 +115,72 @@ function initChart() {
   });
 }
 
-// Hàm lấy dữ liệu 1 lần và xử lý (gọi bởi interval)
-async function fetchOnce(deviceId) {
+async function pollOnce() {
+  if (!pollActive || !pageVisible) return;
+  const deviceId = document.getElementById('device_id').value.trim();
   try {
     const res = await fetch(`/heartbeat/latest/${encodeURIComponent(deviceId)}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
 
-    // nếu không có dữ liệu hợp lệ
+    errorCount = 0;
+
     if (!data || !data.timestamp_ms || data.bpm === 0) {
-      console.warn(' Không có dữ liệu mới hoặc thiết bị chưa gửi.');
+      staleCount++;
+      scheduleNext();
       return;
     }
 
-    // nếu là bản ghi trùng (chưa có dữ liệu mới) -> bỏ
     if (data.timestamp_ms === lastTimestampMs) {
-      // không update lại chart
+      staleCount++;
+      scheduleNext();
       return;
     }
 
-    // cập nhật lastTimestamp
+    staleCount = 0;
     lastTimestampMs = data.timestamp_ms;
 
-    // convert thời gian hiển thị theo client (local)
-    const label = new Date(data.timestamp_ms);
-
-    // push dữ liệu
-    chart.data.labels.push(label.toLocaleTimeString());
+    chart.data.labels.push(new Date(data.timestamp_ms).toLocaleTimeString());
     chart.data.datasets[0].data.push(data.bpm);
     chart.data.datasets[1].data.push(data.spo2);
 
-    // giới hạn số điểm giữ trong chart
     while (chart.data.labels.length > MAX_POINTS) {
       chart.data.labels.shift();
       chart.data.datasets.forEach(ds => ds.data.shift());
     }
-
-    // cập nhật chart
     chart.update();
+
+    scheduleNext();
   } catch (err) {
-    console.error('Fetch error:', err);
+    errorCount++;
+    console.warn(`Lỗi lần ${errorCount}, thử lại sau ${getInterval()}ms`);
+    scheduleNext();
   }
 }
 
-// Kết nối/Ngắt kết nối bằng nút
 document.getElementById('connectBtn').addEventListener('click', () => {
   const deviceId = document.getElementById('device_id').value.trim();
   if (!deviceId) { alert('Vui lòng nhập Device ID'); return; }
 
   if (!chart) initChart();
 
-  if (updateInterval) {
-    // ngắt
-    clearInterval(updateInterval);
-    updateInterval = null;
+  if (pollActive) {
+    pollActive = false;
+    clearTimeout(pollTimer);
+    pollTimer = null;
     lastTimestampMs = 0;
+    staleCount = 0;
+    errorCount = 0;
     document.getElementById('connectBtn').textContent = ' Kết nối thiết bị';
-    console.log('Đã ngắt kết nối');
   } else {
-    // bắt đầu: lấy 1 lần ngay lập tức (không đợi interval)
-    fetchOnce(deviceId);
-    // set interval (2000ms) - bạn có thể tăng lên 3000ms nếu ESP gửi chậm
-    updateInterval = setInterval(() => fetchOnce(deviceId), 2000);
+    pollActive = true;
     document.getElementById('connectBtn').textContent = ' Ngắt kết nối';
-    console.log('Bắt đầu lấy dữ liệu từ', deviceId);
+    pollOnce();
   }
+});
+
+window.addEventListener('beforeunload', () => {
+  clearTimeout(pollTimer);
 });
 </script>
 

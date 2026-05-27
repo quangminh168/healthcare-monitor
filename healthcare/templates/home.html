@@ -78,9 +78,44 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 const charts = {};
-const intervals = {};
+const pollTimers = {};
+const pollState = {};   // { staleCount, errorCount, active }
 const MAX_POINTS = 60;
-const FETCH_INTERVAL = 2000;
+const BASE_INTERVAL = 2000;
+const MAX_INTERVAL = 30000;
+let pageVisible = true;
+
+// --- Page Visibility API: pause/resume all polling ---
+document.addEventListener('visibilitychange', () => {
+  pageVisible = !document.hidden;
+  for (const postId in pollState) {
+    if (!pageVisible) {
+      clearTimeout(pollTimers[postId]);
+      pollTimers[postId] = null;
+    } else if (pollState[postId].active && !pollTimers[postId]) {
+      scheduleNext(postId);
+    }
+  }
+});
+
+function getInterval(postId) {
+  const s = pollState[postId];
+  // Error backoff: 2s -> 4s -> 8s -> 16s -> 30s max
+  if (s.errorCount > 0) {
+    return Math.min(BASE_INTERVAL * Math.pow(2, s.errorCount), MAX_INTERVAL);
+  }
+  // Stale backoff: after 3 identical responses, slow down
+  if (s.staleCount > 3) {
+    return Math.min(BASE_INTERVAL + (s.staleCount - 3) * 1000, MAX_INTERVAL);
+  }
+  return BASE_INTERVAL;
+}
+
+function scheduleNext(postId) {
+  if (!pollState[postId]?.active || !pageVisible) return;
+  const interval = getInterval(postId);
+  pollTimers[postId] = setTimeout(() => pollDevice(postId), interval);
+}
 
 function initChart(postId) {
   const ctx = document.getElementById(`chart-${postId}`).getContext('2d');
@@ -126,15 +161,33 @@ async function fetchInitialData(postId, deviceId) {
   }
 }
 
-async function fetchData(postId, deviceId) {
+async function pollDevice(postId) {
+  const ps = pollState[postId];
+  if (!ps?.active || !pageVisible) return;
+
+  const deviceId = ps.deviceId;
   try {
     const res = await fetch(`/heartbeat/latest/${encodeURIComponent(deviceId)}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    if (!data || !data.timestamp_ms || data.bpm === 0) return;
+
+    ps.errorCount = 0;  // reset on success
+
+    if (!data || !data.timestamp_ms || data.bpm === 0) {
+      ps.staleCount++;
+      scheduleNext(postId);
+      return;
+    }
 
     const chart = charts[postId];
-    if (chart.lastTimestamp === data.timestamp_ms) return;
+    if (chart.lastTimestamp === data.timestamp_ms) {
+      ps.staleCount++;
+      scheduleNext(postId);
+      return;
+    }
+
+    // New data arrived — reset stale counter, restore base interval
+    ps.staleCount = 0;
     chart.lastTimestamp = data.timestamp_ms;
 
     const label = new Date(data.timestamp_ms).toLocaleTimeString();
@@ -147,9 +200,24 @@ async function fetchData(postId, deviceId) {
       chart.data.datasets.forEach(ds => ds.data.shift());
     }
     chart.update('none');
+
+    scheduleNext(postId);
   } catch (err) {
-    console.warn(`Thiết bị ${deviceId} mất kết nối hoặc không có dữ liệu.`);
+    ps.errorCount++;
+    console.warn(`Thiết bị ${deviceId}: lỗi lần ${ps.errorCount}, thử lại sau ${getInterval(postId)}ms`);
+    scheduleNext(postId);
   }
+}
+
+function startPolling(postId, deviceId) {
+  pollState[postId] = { deviceId, staleCount: 0, errorCount: 0, active: true };
+  pollDevice(postId);
+}
+
+function stopPolling(postId) {
+  pollState[postId].active = false;
+  clearTimeout(pollTimers[postId]);
+  pollTimers[postId] = null;
 }
 
 document.querySelectorAll(".connect-btn").forEach(btn => {
@@ -166,27 +234,24 @@ document.querySelectorAll(".connect-btn").forEach(btn => {
       if (!charts[postId].loadedInitial) {
         await fetchInitialData(postId, deviceId);
         charts[postId].loadedInitial = true;
-}
-
+      }
     }
 
-    if (intervals[postId]) {
-      clearInterval(intervals[postId]);
-      intervals[postId] = null;
+    if (pollState[postId]?.active) {
+      stopPolling(postId);
       chartContainer.style.display = "none";
       btn.textContent = "Xem nhịp tim realtime";
     } else {
       chartContainer.style.display = "block";
-      fetchData(postId, deviceId);
-      intervals[postId] = setInterval(() => fetchData(postId, deviceId), FETCH_INTERVAL);
       btn.textContent = "Ngắt kết nối";
+      startPolling(postId, deviceId);
     }
   });
 });
 
 window.addEventListener('beforeunload', () => {
-  for (const key in intervals) {
-    clearInterval(intervals[key]);
+  for (const key in pollTimers) {
+    clearTimeout(pollTimers[key]);
   }
 });
 </script>
