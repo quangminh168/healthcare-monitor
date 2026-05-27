@@ -24,12 +24,16 @@ class Post(db.Model):
     gender = db.Column(db.String(10), nullable=False)
     condition = db.Column(db.String(200), nullable=True)
     notes = db.Column(db.Text, nullable=True)
-    device_id = db.Column(db.String(50), nullable=False)  # <--- thêm dòng này
+    device_id = db.Column(db.String(50), nullable=False, index=True)
     date_posted = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     risk = db.Column(db.Float, default=0.0)  # xác suất mắc bệnh từ mô hình AI
 
 class HeartRateData(db.Model):
+    __table_args__ = (
+        db.Index('idx_hrd_device_timestamp', 'device_id', 'timestamp'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     device_id = db.Column(db.String(50))
     heart_rate = db.Column(db.Float)
