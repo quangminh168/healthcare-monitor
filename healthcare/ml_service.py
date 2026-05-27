@@ -1,6 +1,8 @@
 import logging
+import os
 import joblib
 import pandas as pd
+from flask import current_app
 from healthcare.models import Post, HeartRateData
 
 logger = logging.getLogger(__name__)
@@ -15,7 +17,8 @@ def get_model():
     if not _model_loaded:
         _model_loaded = True
         try:
-            _model = joblib.load("patient_model.pkl")
+            model_path = os.environ.get('MODEL_PATH', 'patient_model.pkl')
+            _model = joblib.load(model_path)
         except FileNotFoundError:
             logger.warning("patient_model.pkl not found. Risk predictions disabled.")
         except Exception as e:

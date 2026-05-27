@@ -26,9 +26,16 @@ def create_app(config_name=None):
 
     app.config.from_object(config[config_name])
 
-    app.config["TEMPLATES_AUTO_RELOAD"] = True
-    app.jinja_env.auto_reload = True
-    app.jinja_env.cache = {}
+    if config_name == 'production':
+        if not app.config.get('SECRET_KEY'):
+            raise ValueError("SECRET_KEY must be set in production")
+        if not app.config.get('SQLALCHEMY_DATABASE_URI'):
+            raise ValueError("SQLALCHEMY_DATABASE_URI must be set in production")
+
+    if app.config.get('DEBUG', False):
+        app.config["TEMPLATES_AUTO_RELOAD"] = True
+        app.jinja_env.auto_reload = True
+        app.jinja_env.cache = {}
 
     db.init_app(app)
     bcrypt.init_app(app)

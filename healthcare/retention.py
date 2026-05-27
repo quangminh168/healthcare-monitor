@@ -11,6 +11,7 @@ Safety rules:
   - Aggregated rows with has_critical/critical_count > 0 are kept longer
 """
 
+import os
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, and_
 
@@ -19,11 +20,11 @@ from healthcare.models import HeartRateData, HeartRateHourly, HeartRateDaily, Po
 
 
 # ---------------------------------------------------------------------------
-# Configurable retention windows (in days)
+# Retention windows (in days) — configurable via environment variables
 # ---------------------------------------------------------------------------
-RAW_RETENTION_DAYS = 7
-HOURLY_RETENTION_DAYS = 90
-DAILY_RETENTION_DAYS = 365
+RAW_RETENTION_DAYS = int(os.environ.get('RETENTION_RAW_DAYS', 7))
+HOURLY_RETENTION_DAYS = int(os.environ.get('RETENTION_HOURLY_DAYS', 90))
+DAILY_RETENTION_DAYS = int(os.environ.get('RETENTION_DAILY_DAYS', 365))
 
 
 def _utcnow():
