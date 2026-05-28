@@ -2,7 +2,7 @@ import os
 import secrets
 from PIL import Image
 from flask import Blueprint, render_template, url_for, flash, redirect, request, current_app
-from healthcare import db, bcrypt, mail, limiter
+from healthcare import db, bcrypt, limiter
 from healthcare.models import User
 from healthcare.form import (
     RegistrationForm,
@@ -11,9 +11,9 @@ from healthcare.form import (
     RequestResetForm,
     ResetPasswordForm,
 )
+from healthcare.tasks import send_reset_email_task
 from flask_login import login_user, logout_user, login_required, current_user
 from itsdangerous import URLSafeTimedSerializer as Serializer
-from flask_mail import Message
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -96,18 +96,7 @@ def get_serializer():
 def send_reset_email(user):
     s = get_serializer()
     token = s.dumps({"user_id": user.id})
-
-    msg = Message(
-        "Reset Your Password",
-        sender=current_app.config["MAIL_USERNAME"],
-        recipients=[user.email],
-    )
-    msg.body = f'''Để đặt lại mật khẩu, click vào link sau:
-{url_for('auth.reset_token', token=token, _external=True)}
-
-Nếu bạn không yêu cầu, hãy bỏ qua email này.
-'''
-    mail.send(msg)
+    send_reset_email_task.delay(user.id, token)
 
 
 @auth_bp.route("/reset_password", methods=["GET", "POST"], endpoint="reset_request")

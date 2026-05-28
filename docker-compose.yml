@@ -1,0 +1,148 @@
+services:
+  # ──────────────────────────────────────────────
+  # MySQL — persistent database
+  # ──────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-healthcare_db}
+      MYSQL_USER: ${MYSQL_USER:-healthcare}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ──────────────────────────────────────────────
+  # Redis — rate limiter storage
+  # ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ──────────────────────────────────────────────
+  # Flask — application server (gunicorn)
+  # ──────────────────────────────────────────────
+  flask:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    env_file:
+      - .env
+    environment:
+      FLASK_ENV: production
+      SQLALCHEMY_DATABASE_URI: mysql+pymysql://${MYSQL_USER:-healthcare}:${MYSQL_PASSWORD}@mysql/${MYSQL_DATABASE:-healthcare_db}
+      RATELIMIT_STORAGE_URI: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - model_data:/app/patient_model.pkl
+      - log_data:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ──────────────────────────────────────────────
+  # Celery Worker — background tasks (email, etc.)
+  # ──────────────────────────────────────────────
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    command: celery -A healthcare.celery_app.celery worker --loglevel=info --concurrency=2
+    env_file:
+      - .env
+    environment:
+      FLASK_ENV: production
+      SQLALCHEMY_DATABASE_URI: mysql+pymysql://${MYSQL_USER:-healthcare}:${MYSQL_PASSWORD}@mysql/${MYSQL_DATABASE:-healthcare_db}
+      RATELIMIT_STORAGE_URI: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - model_data:/app/patient_model.pkl
+      - log_data:/app/logs
+
+  # ──────────────────────────────────────────────
+  # Celery Beat — scheduled tasks (retention)
+  # ──────────────────────────────────────────────
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    command: celery -A healthcare.celery_app.celery beat --loglevel=info
+    env_file:
+      - .env
+    environment:
+      FLASK_ENV: production
+      SQLALCHEMY_DATABASE_URI: mysql+pymysql://${MYSQL_USER:-healthcare}:${MYSQL_PASSWORD}@mysql/${MYSQL_DATABASE:-healthcare_db}
+      RATELIMIT_STORAGE_URI: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - log_data:/app/logs
+
+  # ──────────────────────────────────────────────
+  # Nginx — reverse proxy
+  # ──────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_files:/app/static:ro
+    depends_on:
+      flask:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mysql_data:
+  redis_data:
+  model_data:
+  static_files:
+  log_data:
+  log_data:

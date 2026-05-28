@@ -1,5 +1,4 @@
 import os
-import logging
 
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -15,7 +14,7 @@ db = SQLAlchemy()
 bcrypt = Bcrypt()
 login_manager = LoginManager()
 mail = Mail()
-limiter = Limiter(get_remote_address)
+limiter = Limiter(get_remote_address, storage_uri=os.environ.get('RATELIMIT_STORAGE_URI', 'memory://'))
 
 
 def create_app(config_name=None):
@@ -45,9 +44,24 @@ def create_app(config_name=None):
     login_manager.login_message_category = 'info'
     limiter.init_app(app)
 
-    logging.basicConfig(
-        level=getattr(logging, app.config.get('LOG_LEVEL', 'INFO')),
-        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    # Logging (structured, rotating)
+    from healthcare.logging_config import setup_logging
+    setup_logging(app)
+
+    # Request ID middleware
+    from healthcare.middleware import setup_middleware
+    setup_middleware(app)
+
+    # Prometheus metrics
+    if app.config.get('METRICS_ENABLED', True):
+        from healthcare.metrics import setup_metrics
+        setup_metrics(app)
+
+    # Celery (lazy init — tasks can use db, mail, etc.)
+    from healthcare.celery_app import celery as celery_app
+    celery_app.conf.update(
+        broker_url=app.config.get('CELERY_BROKER_URL', os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/1')),
+        result_backend=app.config.get('CELERY_RESULT_BACKEND', os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/2')),
     )
 
     from healthcare.auth_routes import auth_bp

@@ -6,3 +6,10 @@ __pycache__/
 instance/
 *.db
 .env
+.env.docker
+.dockerignore
+docker-compose.yml
+nginx/
+PROJECT_RULES.md
+PROJECT_STATUS.md
+*.csv

@@ -30,9 +30,18 @@ class Config:
     RATELIMIT_LOGIN = os.environ.get('RATELIMIT_LOGIN', '5/minute')
     RATELIMIT_REGISTER = os.environ.get('RATELIMIT_REGISTER', '3/minute')
     RATELIMIT_HEARTBEAT = os.environ.get('RATELIMIT_HEARTBEAT', '60/minute')
+    RATELIMIT_STORAGE_URI = os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')
 
     # Logging
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
+    LOG_FILE = os.environ.get('LOG_FILE', 'logs/healthcare.log')
+
+    # Metrics
+    METRICS_ENABLED = os.environ.get('METRICS_ENABLED', 'true').lower() == 'true'
+
+    # Celery
+    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/1')
+    CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/2')
 
     # ML
     MODEL_PATH = os.environ.get('MODEL_PATH', 'patient_model.pkl')
