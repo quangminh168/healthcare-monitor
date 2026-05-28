@@ -1,10 +1,7 @@
 """Celery tasks for background processing."""
 import logging
-from flask import url_for
-from flask_mail import Message
 
-from healthcare.celery_app import celery
-from healthcare import db, mail
+from celery_worker import celery
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +9,9 @@ logger = logging.getLogger(__name__)
 @celery.task(name='healthcare.tasks.send_reset_email_task')
 def send_reset_email_task(user_id, token):
     """Send password reset email asynchronously."""
+    from flask import url_for
+    from flask_mail import Message
+    from healthcare import db, mail
     from healthcare.models import User
 
     user = db.session.get(User, user_id)

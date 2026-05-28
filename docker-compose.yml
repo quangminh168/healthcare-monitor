@@ -59,7 +59,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - model_data:/app/patient_model.pkl
+      - ./patient_model.pkl:/app/patient_model.pkl
       - log_data:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
@@ -76,7 +76,7 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: always
-    command: celery -A healthcare.celery_app.celery worker --loglevel=info --concurrency=2
+    command: celery -A celery_worker worker --loglevel=info --concurrency=2
     env_file:
       - .env
     environment:
@@ -91,7 +91,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - model_data:/app/patient_model.pkl
+      - ./patient_model.pkl:/app/patient_model.pkl
       - log_data:/app/logs
 
   # ──────────────────────────────────────────────
@@ -102,7 +102,7 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: always
-    command: celery -A healthcare.celery_app.celery beat --loglevel=info
+    command: celery -A celery_worker beat --loglevel=info
     env_file:
       - .env
     environment:
@@ -144,5 +144,4 @@ volumes:
   redis_data:
   model_data:
   static_files:
-  log_data:
   log_data:
