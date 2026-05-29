@@ -11,7 +11,6 @@ from healthcare.form import (
     RequestResetForm,
     ResetPasswordForm,
 )
-from healthcare.tasks import send_reset_email_task
 from flask_login import login_user, logout_user, login_required, current_user
 from itsdangerous import URLSafeTimedSerializer as Serializer
 
@@ -94,6 +93,7 @@ def get_serializer():
 
 
 def send_reset_email(user):
+    from healthcare.tasks import send_reset_email_task
     s = get_serializer()
     token = s.dumps({"user_id": user.id})
     send_reset_email_task.delay(user.id, token)

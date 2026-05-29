@@ -89,7 +89,7 @@ def setup_logging(app):
         root_logger.addHandler(file_handler)
 
     # Silence noisy libraries
-    logging.getLogger('werkzeug').setLevel(logging.WARNING)
+    logging.getLogger('werkzeug').setLevel(logging.INFO)
     logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
 
     app.logger.info("Logging initialized (level=%s, file=%s)", app.config.get('LOG_LEVEL'), log_file)

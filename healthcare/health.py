@@ -23,7 +23,7 @@ def _check_redis():
 def _check_celery():
     """Ping Celery workers. Returns 'connected' or error string."""
     try:
-        from healthcare.celery_app import celery
+        from celery_worker import celery
         inspector = celery.control.inspect(timeout=2)
         active = inspector.active()
         if active:

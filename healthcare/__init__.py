@@ -57,13 +57,6 @@ def create_app(config_name=None):
         from healthcare.metrics import setup_metrics
         setup_metrics(app)
 
-    # Celery (tasks use db, mail via ContextTask app context)
-    from celery_worker import celery as celery_app
-    celery_app.conf.update(
-        broker_url=app.config.get('CELERY_BROKER_URL', os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/1')),
-        result_backend=app.config.get('CELERY_RESULT_BACKEND', os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/2')),
-    )
-
     from healthcare.auth_routes import auth_bp
     from healthcare.api_routes import api_bp
     from healthcare.dashboard_routes import dashboard_bp
