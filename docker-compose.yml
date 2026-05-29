@@ -5,13 +5,15 @@ services:
   mysql:
     image: mysql:8.0
     restart: always
+    env_file:
+      - .env
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-healthcare_db}
-      MYSQL_USER: ${MYSQL_USER:-healthcare}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD not set in .env}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-healthcare_db}"
+      MYSQL_USER: "${MYSQL_USER:-healthcare}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?MYSQL_PASSWORD not set in .env}"
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
@@ -28,7 +30,7 @@ services:
     image: redis:7-alpine
     restart: always
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -49,7 +51,7 @@ services:
       - .env
     environment:
       FLASK_ENV: production
-      SQLALCHEMY_DATABASE_URI: mysql+pymysql://${MYSQL_USER:-healthcare}:${MYSQL_PASSWORD}@mysql/${MYSQL_DATABASE:-healthcare_db}
+      SQLALCHEMY_DATABASE_URI: "mysql+pymysql://${MYSQL_USER:-healthcare}:${MYSQL_PASSWORD:?MYSQL_PASSWORD not set}@mysql/${MYSQL_DATABASE:-healthcare_db}"
       RATELIMIT_STORAGE_URI: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
@@ -81,7 +83,7 @@ services:
       - .env
     environment:
       FLASK_ENV: production
-      SQLALCHEMY_DATABASE_URI: mysql+pymysql://${MYSQL_USER:-healthcare}:${MYSQL_PASSWORD}@mysql/${MYSQL_DATABASE:-healthcare_db}
+      SQLALCHEMY_DATABASE_URI: "mysql+pymysql://${MYSQL_USER:-healthcare}:${MYSQL_PASSWORD:?MYSQL_PASSWORD not set}@mysql/${MYSQL_DATABASE:-healthcare_db}"
       RATELIMIT_STORAGE_URI: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
@@ -107,7 +109,7 @@ services:
       - .env
     environment:
       FLASK_ENV: production
-      SQLALCHEMY_DATABASE_URI: mysql+pymysql://${MYSQL_USER:-healthcare}:${MYSQL_PASSWORD}@mysql/${MYSQL_DATABASE:-healthcare_db}
+      SQLALCHEMY_DATABASE_URI: "mysql+pymysql://${MYSQL_USER:-healthcare}:${MYSQL_PASSWORD:?MYSQL_PASSWORD not set}@mysql/${MYSQL_DATABASE:-healthcare_db}"
       RATELIMIT_STORAGE_URI: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
@@ -129,7 +131,6 @@ services:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - static_files:/app/static:ro
     depends_on:
       flask:
         condition: service_healthy
@@ -142,6 +143,4 @@ services:
 volumes:
   mysql_data:
   redis_data:
-  model_data:
-  static_files:
   log_data:
